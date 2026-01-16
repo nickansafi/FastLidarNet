@@ -207,23 +207,24 @@ def load_dataset(paths, down_sample_params, train_ratio=0.85):
 
 
 def create_tf_dataset(lidar, servo, speed, min_speed, max_speed, batch_size):
-    """Convert loaded data to tf.data.Dataset."""
+    """Convert loaded data to tf.data.Dataset with proper shuffling."""
     resolutions = list(lidar.keys())
     
     if not resolutions:
         return None, []
     
-    # Make copies to avoid modifying originals
     lidar_processed = {}
     servo_processed = {}
     speed_processed = {}
     
+    total_samples = 0
     for resolution in resolutions:
         lidar_processed[resolution] = np.asarray(lidar[resolution])
         lidar_processed[resolution] = np.expand_dims(lidar_processed[resolution], axis=-1)
         servo_processed[resolution] = np.asarray(servo[resolution])
         speed_processed[resolution] = np.asarray(speed[resolution])
         speed_processed[resolution] = linear_map(speed_processed[resolution], min_speed, max_speed, 0, 1)
+        total_samples += len(lidar_processed[resolution])
     
     datasets = []
     for resolution in resolutions:
@@ -232,12 +233,15 @@ def create_tf_dataset(lidar, servo, speed, min_speed, max_speed, batch_size):
             (lidar_processed[resolution], resolution_keys),
             np.stack([servo_processed[resolution], speed_processed[resolution]], axis=1)
         ))
-        data = data.shuffle(10000).batch(batch_size)
+        data = data.batch(batch_size)
         datasets.append(data)
     
     combined = datasets[0]
     for data in datasets[1:]:
         combined = combined.concatenate(data)
+    
+    # THIS IS THE ONLY NEW LINE
+    combined = combined.shuffle(buffer_size=100, reshuffle_each_iteration=True)
     
     return combined, resolutions
 
